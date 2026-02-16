@@ -1,0 +1,206 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  password     String
+  role         Role     @default(user)
+  activeSessionId String?
+  // Kolom Token Version (untuk Single Device Login yang kita bahas sebelumnya)
+  tokenVersion Int      @default(0)
+
+  failedLoginAttempts Int       @default(0) // Menghitung berapa kali salah password
+  lockedUntil         DateTime?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Relasi NextAuth (Account & Session) - Pastikan ini ada jika pakai strategy database
+  accounts      Account[]
+  sessions      Session[]
+  auditLogs    AuditLog[]
+
+  // --- RELASI AUDIT TRAIL (Tambahan Baru) ---
+  barangDibuat   Data_barang[] @relation("BarangDibuat")
+  barangDiedit   Data_barang[] @relation("BarangDiedit")
+  barangDihapus  Data_barang[] @relation("BarangDihapus")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String   // CREATE, UPDATE, DELETE
+  tableName  String   // Data_barang, User, Peminjaman, dll.
+  dataName   String   // Nama barang atau nama user yang dieksekusi
+  createdAt  DateTime @default(now())
+}
+
+// Tambahan Wajib untuk NextAuth Database Session
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Model Data Barang 
+model Data_barang {
+  id_barang        Int     @id @default(autoincrement())
+  nama_barang      String
+  is_stock_bulanan Boolean @default(false)
+  satuan_barang    String
+  stok_barang      Int
+
+  barang_masuk  Data_barang_masuk[]
+  barang_keluar Data_barang_keluar[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  peminjamans Peminjaman[]
+
+  // --- FIELD AUDIT TRAIL (Tambahan Baru) ---
+  
+  // 1. Dibuat Oleh
+  createdById      String?
+  createdBy        User?   @relation("BarangDibuat", fields: [createdById], references: [id])
+
+  // 2. Diedit Oleh
+  updatedById      String?
+  updatedBy        User?   @relation("BarangDiedit", fields: [updatedById], references: [id])
+
+  // 3. Soft Delete (Dihapus Oleh & Kapan)
+  isDeleted        Boolean   @default(false) // Default false artinya "Aktif"
+  deletedAt        DateTime?
+  deletedById      String?
+  deletedBy        User?     @relation("BarangDihapus", fields: [deletedById], references: [id])
+
+  @@index([nama_barang])
+  @@index([isDeleted]) // Index biar query filter isDeleted:false cepat
+}
+
+// Model Barang Masuk 
+model Data_barang_masuk {
+  id_barang_masuk Int         @id @default(autoincrement())
+  id_barang       Int
+  id_peminjaman   Int?
+  jumlah_barang   Int
+  tanggal_masuk   DateTime
+  sumber_barang   String
+  data_barang     Data_barang @relation(fields: [id_barang], references: [id_barang])
+
+  isDeleted  Boolean  @default(false)
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([id_barang])
+}
+
+// Model Barang Keluar 
+model Data_barang_keluar {
+  id_barang_keluar Int         @id @default(autoincrement())
+  id_barang        Int
+  id_peminjaman   Int?
+  tanggal_keluar   DateTime
+  jumlah_keluar    Int
+  keterangan       String
+  data_barang      Data_barang @relation(fields: [id_barang], references: [id_barang])
+
+  isDeleted  Boolean  @default(false)
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([id_barang])
+}
+
+// Model Peminjaman Barang
+model Peminjaman {
+  id_peminjaman      Int       @id @default(autoincrement())
+  id_barang          Int
+  nomor_ktp          String    @default("-")
+  nama_peminjam      String
+  kategori_peminjam  String    @default("Warga")
+  no_telepon         String
+  alamat             String    @default("-")
+  jumlah_peminjaman  Int
+  status_peminjaman  String    @default("Belum Dikembalikan")
+  tanggal_peminjaman DateTime?
+
+  data_barang Data_barang @relation(fields: [id_barang], references: [id_barang])
+
+  isDeleted  Boolean  @default(false)
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([nama_peminjam])
+  @@index([status_peminjaman])
+  @@index([id_barang])
+}
+model Satuan {
+  id_satuan Int    @id @default(autoincrement())
+  nama      String @unique // @unique biar gak ada duplikat (misal 2 kali 'Pcs')
+}
+
+enum Role {
+  user
+  admin
+}
+
+model BackupSettings {
+  id              Int               @id @default(1)
+  isEmailActive   Boolean           @default(false)
+  adminEmail      String            
+  additionalEmails VerifiedEmail[]
+}
+
+model VerifiedEmail {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  isVerified Boolean  @default(false)
+  otpCode    String?
+  otpExpiry  DateTime?
+  settingsId Int      @default(1)
+  settings   BackupSettings @relation(fields: [settingsId], references: [id])
+}
