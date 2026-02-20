@@ -104,7 +104,7 @@ export const getBackupSettingsAction = async () => {
 };
 
 export const updateBackupStatusAction = async (isActive: boolean) => {
-  const emailDariEnv = process.env.EMAIL_USER || "sanzah89@gmail.com";
+  const emailDariEnv = process.env.EMAIL_USER || "ekbang845@gmail.com";
 
   return await prisma.backupSettings.upsert({
     where: { id: 1 },
