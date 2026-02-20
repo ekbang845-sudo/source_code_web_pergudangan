@@ -22,7 +22,7 @@ export const requestEmailOtpAction = async (email: string) => {
       create: { 
         id: 1, 
         isEmailActive: false, 
-        adminEmail: process.env.EMAIL_USER || "hamsanzah@gmail.com" 
+        adminEmail: process.env.EMAIL_USER || "ekbang845@gmail.com" 
       }
     });
 
